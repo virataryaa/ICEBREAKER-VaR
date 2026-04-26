@@ -321,3 +321,233 @@ fig_hm.update_layout(
     margin=dict(t=40, b=10, l=60, r=10), **_D,
 )
 st.plotly_chart(fig_hm, use_container_width=True)
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 4 — Monte Carlo Portfolio VaR
+# ═══════════════════════════════════════════════════════════════════════════════
+st.markdown(
+    "<h2 style='font-family:\"Playfair Display\",Georgia,serif;color:#0a2463;"
+    "font-weight:400;letter-spacing:-.01em;margin-bottom:2px'>Portfolio VaR — Monte Carlo</h2>",
+    unsafe_allow_html=True,
+)
+st.markdown("<hr>", unsafe_allow_html=True)
+
+# ── Controls ──────────────────────────────────────────────────────────────────
+cc1, cc2, cc3, cc4 = st.columns([2, 2, 2, 2])
+with cc1:
+    mc_win  = st.radio("Calibration Window", list(WINDOWS.keys()), index=1,
+                       horizontal=True, key="mc_win")
+with cc2:
+    n_sims  = st.select_slider("Simulations", [1_000, 5_000, 10_000, 25_000],
+                               value=10_000, key="mc_nsims")
+with cc3:
+    mc_conf = st.radio("Confidence", ["95%", "99%"], index=1,
+                       horizontal=True, key="mc_conf")
+with cc4:
+    use_t  = st.toggle("Fat tails (t-dist)", value=True, key="mc_t")
+    t_df_v = st.slider("Degrees of freedom", 3, 30, 6, key="mc_tdf") if use_t else None
+
+# ── Position input table ──────────────────────────────────────────────────────
+st.markdown(lbl("Book — Enter Positions"), unsafe_allow_html=True)
+
+comm_order = list(LOT_SIZES.keys())
+_pos_rows  = []
+for _c in comm_order:
+    _last  = data[_c].dropna(subset=["settlement"]).iloc[-1]
+    _price = float(_last["settlement"])
+    _contr = str(_last.get("base_ric", ""))
+    _pos_rows.append({
+        "Code":            _c,
+        "Name":            NAMES[_c],
+        "Contract":        _contr,
+        "Price":           _price,
+        "$ / Lot":         round(_price * LOT_SIZES[_c], 0),
+        "Position (lots)": 0,
+    })
+
+_pos_default = pd.DataFrame(_pos_rows)
+_edited = st.data_editor(
+    _pos_default,
+    column_config={
+        "Code":            st.column_config.TextColumn("Code",      disabled=True, width="small"),
+        "Name":            st.column_config.TextColumn("Name",      disabled=True),
+        "Contract":        st.column_config.TextColumn("Contract",  disabled=True, width="small"),
+        "Price":           st.column_config.NumberColumn("Price",   disabled=True, format="%.2f"),
+        "$ / Lot":         st.column_config.NumberColumn("$ / Lot", disabled=True, format="$%,.0f"),
+        "Position (lots)": st.column_config.NumberColumn("Position (lots)", step=1,
+                                                          min_value=-500_000, max_value=500_000),
+    },
+    hide_index=True,
+    use_container_width=True,
+    key="mc_pos_editor",
+)
+
+positions  = _edited["Position (lots)"].values.astype(float)
+prices_v   = _edited["Price"].values.astype(float)
+lot_arr    = np.array([LOT_SIZES[c] for c in comm_order], dtype=float)
+dollar_exp = positions * lot_arr * prices_v
+
+if np.all(positions == 0):
+    st.info("Enter position sizes above to run the simulation.")
+    st.stop()
+
+# ── Returns matrix & covariance ───────────────────────────────────────────────
+w_mc     = WINDOWS[mc_win]
+ret_mx   = pd.concat(
+    [data[c].set_index("Date")["log_ret"].rename(c) for c in comm_order], axis=1
+).dropna()
+recent_r = ret_mx.tail(w_mc)
+cov_mx   = recent_r.cov().values
+corr_mx  = recent_r.corr()
+
+try:
+    L = np.linalg.cholesky(cov_mx)
+except np.linalg.LinAlgError:
+    L = np.linalg.cholesky(cov_mx + np.eye(len(comm_order)) * 1e-10)
+
+# ── Simulate ──────────────────────────────────────────────────────────────────
+rng = np.random.default_rng(42)
+if use_t:
+    Z = rng.standard_t(t_df_v, size=(n_sims, len(comm_order)))
+    Z = Z / np.sqrt(t_df_v / (t_df_v - 2))
+else:
+    Z = rng.standard_normal((n_sims, len(comm_order)))
+
+sim_ret = Z @ L.T
+sim_pnl = sim_ret @ dollar_exp
+
+# ── VaR / CVaR ────────────────────────────────────────────────────────────────
+alpha     = 0.01 if mc_conf == "99%" else 0.05
+z_para    = 2.5758 if mc_conf == "99%" else 1.6449
+cutoff    = float(np.percentile(sim_pnl, alpha * 100))
+port_var  = max(-cutoff, 0.0)
+tail_mask = sim_pnl <= cutoff
+port_cvar = float(-sim_pnl[tail_mask].mean()) if tail_mask.any() else port_var
+
+indiv_var = np.array([
+    abs(dollar_exp[i]) * float(data[c][f"vol_{mc_win}"].dropna().iloc[-1]) * z_para
+    for i, c in enumerate(comm_order)
+])
+sum_indiv   = float(indiv_var.sum())
+div_benefit = sum_indiv - port_var
+
+# ── KPI row ───────────────────────────────────────────────────────────────────
+k1, k2, k3, k4, k5 = st.columns(5)
+k1.metric("Portfolio VaR",        f"${port_var:,.0f}")
+k2.metric("CVaR / Exp Shortfall", f"${port_cvar:,.0f}")
+k3.metric("Sum Indiv VaRs",       f"${sum_indiv:,.0f}")
+k4.metric("Diversification",      f"${div_benefit:,.0f}",
+          delta=f"{div_benefit / sum_indiv * 100:.1f}% reduction" if sum_indiv > 0 else None,
+          delta_color="inverse")
+k5.metric("Gross $ Exposure",     f"${np.abs(dollar_exp).sum():,.0f}")
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+# ── P&L Histogram  +  Correlation heatmap ────────────────────────────────────
+h_col, c_col = st.columns([3, 2])
+
+with h_col:
+    st.markdown(lbl(f"Simulated 1-Day P&L · {n_sims:,} paths · {mc_conf}"), unsafe_allow_html=True)
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Histogram(
+        x=sim_pnl[~tail_mask], nbinsx=80,
+        marker_color="#2a6496", opacity=0.55, name="Within VaR",
+        hovertemplate="P&L: $%{x:,.0f}<extra>Within VaR</extra>",
+    ))
+    fig_hist.add_trace(go.Histogram(
+        x=sim_pnl[tail_mask], nbinsx=30,
+        marker_color="#c0392b", opacity=0.85, name=f"Tail (>{mc_conf})",
+        hovertemplate="P&L: $%{x:,.0f}<extra>Tail loss</extra>",
+    ))
+    fig_hist.add_vline(x=cutoff,
+                       line=dict(color="#c0392b", width=2, dash="dash"),
+                       annotation_text=f"VaR  ${port_var:,.0f}",
+                       annotation_font=dict(size=9, color="#c0392b"),
+                       annotation_position="top right")
+    fig_hist.add_vline(x=-port_cvar,
+                       line=dict(color="#7b0000", width=1.5, dash="dot"),
+                       annotation_text=f"CVaR  ${port_cvar:,.0f}",
+                       annotation_font=dict(size=9, color="#7b0000"),
+                       annotation_position="top left")
+    fig_hist.update_layout(
+        barmode="overlay", height=400,
+        xaxis=dict(title="1-Day P&L (USD)", tickformat="$,.0f",
+                   tickfont=dict(size=9, color=BLACK), showgrid=False),
+        yaxis=dict(title="Frequency", tickfont=dict(size=9, color=BLACK),
+                   showgrid=True, gridcolor="#f0f0f0"),
+        legend=dict(orientation="h", y=1.02, x=0, font=dict(size=8)),
+        margin=dict(t=10, b=10, l=4, r=4), **_D,
+    )
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+with c_col:
+    st.markdown(lbl(f"Return Correlation · {mc_win} window"), unsafe_allow_html=True)
+    _corr_z   = corr_mx.values
+    _clbls    = [NAMES[c] for c in comm_order]
+    fig_corr  = go.Figure(go.Heatmap(
+        z=_corr_z, x=_clbls, y=_clbls,
+        text=[[f"{v:.2f}" for v in row] for row in _corr_z],
+        texttemplate="%{text}", textfont=dict(size=9, color=BLACK),
+        colorscale=[[0, "#c0392b"], [0.5, "#ffffff"], [1, "#2a6496"]],
+        zmin=-1, zmax=1, showscale=True,
+        colorbar=dict(thickness=10, len=0.8, tickfont=dict(size=8, color=BLACK)),
+        hovertemplate="<b>%{y} × %{x}</b><br>ρ = %{z:.2f}<extra></extra>",
+    ))
+    fig_corr.update_layout(
+        height=400,
+        xaxis=dict(tickfont=dict(size=8, color=BLACK), tickangle=-30, showgrid=False),
+        yaxis=dict(tickfont=dict(size=8, color=BLACK), showgrid=False),
+        margin=dict(t=10, b=60, l=90, r=10), **_D,
+    )
+    st.plotly_chart(fig_corr, use_container_width=True)
+
+st.markdown("<hr>", unsafe_allow_html=True)
+
+# ── Component VaR by commodity ────────────────────────────────────────────────
+st.markdown(lbl("Component VaR by Commodity"), unsafe_allow_html=True)
+st.caption("Average contribution to portfolio loss in tail scenarios (conditional on portfolio P&L ≤ VaR cutoff). Negative = hedge.")
+
+comm_pnl_mx = sim_ret * dollar_exp[np.newaxis, :]
+if tail_mask.any():
+    comp_var_arr = np.where(positions != 0, -comm_pnl_mx[tail_mask].mean(axis=0), 0.0)
+else:
+    comp_var_arr = np.zeros(len(comm_order))
+
+fig_comp = go.Figure(go.Bar(
+    x=[f"{c}<br>{NAMES[c]}" for c in comm_order],
+    y=comp_var_arr,
+    marker_color=[COLORS[c] if positions[i] != 0 else "#cccccc"
+                  for i, c in enumerate(comm_order)],
+    text=[f"${v:,.0f}" if positions[i] != 0 else "—"
+          for i, v in zip(range(len(comm_order)), comp_var_arr)],
+    textposition="outside",
+    textfont=dict(size=9, color=BLACK),
+    hovertemplate="<b>%{x}</b><br>Component VaR: $%{y:,.0f}<extra></extra>",
+))
+fig_comp.add_hline(y=0, line=dict(color="#aaaaaa", width=1))
+fig_comp.update_layout(
+    height=320,
+    xaxis=dict(showgrid=False, tickfont=dict(size=9, color=BLACK)),
+    yaxis=dict(showgrid=True, gridcolor="#f0f0f0", tickformat="$,.0f",
+               tickfont=dict(size=9, color=BLACK), title="Component VaR (USD)"),
+    margin=dict(t=30, b=10, l=4, r=4), **_D,
+)
+st.plotly_chart(fig_comp, use_container_width=True)
+
+# ── Full breakdown table ──────────────────────────────────────────────────────
+_tbl = []
+for i, c in enumerate(comm_order):
+    _tbl.append({
+        "Commodity":       f"{c} — {NAMES[c]}",
+        "Position (lots)": int(positions[i]),
+        "$ Exposure":      f"${dollar_exp[i]:,.0f}",
+        "Indiv VaR":       f"${indiv_var[i]:,.0f}",
+        "Component VaR":   f"${comp_var_arr[i]:,.0f}" if positions[i] != 0 else "—",
+        "% of Portfolio":  f"{comp_var_arr[i] / port_var * 100:.1f}%"
+                           if port_var > 0 and positions[i] != 0 else "—",
+    })
+
+with st.expander("Full Position Breakdown", expanded=False):
+    st.dataframe(pd.DataFrame(_tbl), use_container_width=True, hide_index=True)
