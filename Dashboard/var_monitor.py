@@ -475,8 +475,8 @@ with tab2:
                        tickfont=dict(size=9, color=BLACK), showgrid=False),
             yaxis=dict(title="Frequency", tickfont=dict(size=9, color=BLACK),
                        showgrid=True, gridcolor="#f0f0f0"),
-            legend=dict(orientation="h", y=1.02, x=0, font=dict(size=8)),
-            margin=dict(t=10, b=10, l=4, r=4), **_D,
+            legend=dict(orientation="h", y=-0.22, x=0, font=dict(size=8)),
+            margin=dict(t=30, b=60, l=4, r=4), **_D,
         )
         st.plotly_chart(fig_hist, use_container_width=True)
 
@@ -504,8 +504,8 @@ with tab2:
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # ── Component VaR by commodity ────────────────────────────────────────────
-    st.markdown(lbl("Component VaR by Commodity"), unsafe_allow_html=True)
-    st.caption("Average contribution to portfolio loss in tail scenarios (conditional on portfolio P&L ≤ VaR cutoff). Negative = hedge.")
+    st.markdown(lbl("Component CVaR by Commodity"), unsafe_allow_html=True)
+    st.caption("Average per-commodity loss in tail scenarios (portfolio P&L ≤ VaR cutoff). Sums to portfolio CVaR. Negative = hedge.")
 
     comm_pnl_mx = sim_ret * dollar_exp[np.newaxis, :]
     if tail_mask.any():
@@ -522,14 +522,14 @@ with tab2:
               for i, v in zip(range(len(comm_order)), comp_var_arr)],
         textposition="outside",
         textfont=dict(size=9, color=BLACK),
-        hovertemplate="<b>%{x}</b><br>Component VaR: $%{y:,.0f}<extra></extra>",
+        hovertemplate="<b>%{x}</b><br>Component CVaR: $%{y:,.0f}<extra></extra>",
     ))
     fig_comp.add_hline(y=0, line=dict(color="#aaaaaa", width=1))
     fig_comp.update_layout(
         height=320,
         xaxis=dict(showgrid=False, tickfont=dict(size=9, color=BLACK)),
         yaxis=dict(showgrid=True, gridcolor="#f0f0f0", tickformat="$,.0f",
-                   tickfont=dict(size=9, color=BLACK), title="Component VaR (USD)"),
+                   tickfont=dict(size=9, color=BLACK), title="Component CVaR (USD)"),
         margin=dict(t=30, b=10, l=4, r=4), **_D,
     )
     st.plotly_chart(fig_comp, use_container_width=True)
@@ -542,9 +542,9 @@ with tab2:
             "Position (lots)": int(positions[i]),
             "$ Exposure":      f"${dollar_exp[i]:,.0f}",
             "Indiv VaR":       f"${indiv_var[i]:,.0f}",
-            "Component VaR":   f"${comp_var_arr[i]:,.0f}" if positions[i] != 0 else "—",
-            "% of Portfolio":  f"{comp_var_arr[i] / port_var * 100:.1f}%"
-                               if port_var > 0 and positions[i] != 0 else "—",
+            "Component CVaR":  f"${comp_var_arr[i]:,.0f}" if positions[i] != 0 else "—",
+            "% of CVaR":       f"{comp_var_arr[i] / port_cvar * 100:.1f}%"
+                               if port_cvar > 0 and positions[i] != 0 else "—",
         })
 
     with st.expander("Full Position Breakdown", expanded=False):
