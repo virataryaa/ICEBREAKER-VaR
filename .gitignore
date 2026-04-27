@@ -1,0 +1,15 @@
+# Runtime files
+saved_positions.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Data files — parquets are local, not source
+*.parquet
+
+# OS
+.DS_Store
+Thumbs.db
