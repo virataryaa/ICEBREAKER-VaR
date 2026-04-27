@@ -347,6 +347,33 @@ with tab2:
         use_t  = st.toggle("Fat tails (t-dist)", value=True, key="mc_t")
         t_df_v = st.slider("Degrees of freedom", 3, 30, 6, key="mc_tdf") if use_t else None
 
+    # ── Parameter guide ───────────────────────────────────────────────────────
+    with st.expander("Parameter Guide", expanded=False):
+        st.markdown("""
+**Calibration Window** sets how many recent trading days are used to estimate volatility and correlations.
+Use **20D** when you want the model to reflect current market conditions closely.
+Use **60D** as the standard balanced view (roughly one quarter).
+Use **120D** for a more conservative estimate that smooths over short calm periods and is less likely to understate risk.
+
+**Simulations** controls how many scenarios are generated. More paths means a more stable VaR number with less sampling noise.
+1,000 is fine for quick exploration, 10,000 is the working default, and 25,000 is recommended for any formal reporting or comparison.
+
+**Confidence** sets the loss threshold. At 95% the VaR is the loss exceeded on roughly 1 in 20 days. At 99% it is 1 in 100 days.
+99% is the standard for professional risk reporting.
+
+**Fat Tails (t-dist)** switches the simulation from a normal distribution to a Student-t distribution, which assigns higher probability
+to extreme moves. Commodity markets experience sharp dislocations more often than normal would predict, so this is recommended on by default.
+
+**Degrees of Freedom** controls how fat the tails are. Lower means more extreme moves in the simulation.
+
+| Degrees of Freedom | Tail behaviour | When to use |
+|---|---|---|
+| 3 to 4 | Very fat tails, frequent extreme moves | Stress testing, crisis scenarios |
+| 5 to 7 | Moderate fat tails | Standard soft commodity conditions (default 6) |
+| 10 to 15 | Mild fat tails | Calm, range-bound markets |
+| Above 30 | Converges to normal distribution | Effectively the same as turning fat tails off |
+""")
+
     # ── Position input table ──────────────────────────────────────────────────
     st.markdown(lbl("Book — Enter Positions"), unsafe_allow_html=True)
 
