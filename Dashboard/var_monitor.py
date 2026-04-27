@@ -4,6 +4,7 @@ Parametric 1-Day VaR at 99% confidence (rolling window: 20D / 60D / 120D)
 Run: streamlit run var_monitor.py
 """
 
+import json
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -11,7 +12,19 @@ import streamlit as st
 from pathlib import Path
 
 # ── Data paths ───────────────────────────────────────────────────────────────
-_DB_DIR = Path(__file__).resolve().parents[1] / "Database"
+_DB_DIR       = Path(__file__).resolve().parents[1] / "Database"
+_POSITIONS_FILE = Path(__file__).resolve().parent / "saved_positions.json"
+
+def _load_positions(comm_order):
+    if _POSITIONS_FILE.exists():
+        try:
+            return json.loads(_POSITIONS_FILE.read_text())
+        except Exception:
+            pass
+    return {c: 0 for c in comm_order}
+
+def _save_positions(positions: dict):
+    _POSITIONS_FILE.write_text(json.dumps(positions))
 
 def _rx_load(comm: str) -> pd.DataFrame:
     """Read rollex parquet directly — no rollex_utils dependency."""
@@ -380,14 +393,18 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
     comm_order = list(LOT_SIZES.keys())
 
     if "saved_positions" not in st.session_state:
-        st.session_state["saved_positions"] = {c: 0 for c in comm_order}
+        st.session_state["saved_positions"] = _load_positions(comm_order)
 
     # Harvest any edits from the previous render's diff state, then clear it.
     # This avoids Streamlit conflicting its own diff with the updated base DataFrame.
     if "mc_pos_editor" in st.session_state:
+        changed = False
         for _row, _edits in st.session_state["mc_pos_editor"].get("edited_rows", {}).items():
             if "Position (lots)" in _edits:
                 st.session_state["saved_positions"][comm_order[int(_row)]] = int(_edits["Position (lots)"])
+                changed = True
+        if changed:
+            _save_positions(st.session_state["saved_positions"])
         del st.session_state["mc_pos_editor"]
 
     _pos_rows  = []
