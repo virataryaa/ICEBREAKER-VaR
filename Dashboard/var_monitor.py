@@ -177,7 +177,7 @@ max_d         = all_dates.max().date()
 default_start = (all_dates.max() - pd.DateOffset(years=5)).date()
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2 = st.tabs(["VaR Monitor", "Portfolio VaR — Monte Carlo"])
+tab2, tab1 = st.tabs(["Portfolio VaR — Monte Carlo", "Parametric VaR"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 1 — VaR Monitor
