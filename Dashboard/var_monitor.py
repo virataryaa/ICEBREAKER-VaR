@@ -351,7 +351,8 @@ with tab2:
         mc_win  = st.radio("Calibration Window", list(WINDOWS.keys()), index=1,
                            horizontal=True, key="mc_win")
     with cc2:
-        n_sims  = st.select_slider("Simulations", [1_000, 5_000, 10_000, 25_000],
+        n_sims  = st.select_slider("Simulations",
+                                   [1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 500_000],
                                    value=10_000, key="mc_nsims")
     with cc3:
         mc_conf = st.radio("Confidence", ["95%", "99%"], index=1,
