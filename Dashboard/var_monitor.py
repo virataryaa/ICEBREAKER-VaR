@@ -90,7 +90,7 @@ COMBINED_COLORS = {
     "Sugar (SB+LSU)":  "#2a8a2a",
 }
 
-CONF_Z  = 2.5758
+CONF_Z  = 2.3263  # one-tailed 99% VaR (N^-1(0.99)); 2.5758 is two-tailed 99% and overstates
 WINDOWS = {"20D": 20, "60D": 60, "120D": 120}
 MONTHS  = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
@@ -474,7 +474,7 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
 
     # ── VaR / CVaR ────────────────────────────────────────────────────────────
     alpha     = 0.01 if mc_conf == "99%" else 0.05
-    z_para    = 2.5758 if mc_conf == "99%" else 1.6449
+    z_para    = 2.3263 if mc_conf == "99%" else 1.6449
     cutoff    = float(np.percentile(sim_pnl, alpha * 100))
     port_var  = max(-cutoff, 0.0)
     tail_mask = sim_pnl <= cutoff
