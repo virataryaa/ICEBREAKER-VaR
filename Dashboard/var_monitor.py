@@ -382,6 +382,14 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
     if "saved_positions" not in st.session_state:
         st.session_state["saved_positions"] = {c: 0 for c in comm_order}
 
+    # Harvest any edits from the previous render's diff state, then clear it.
+    # This avoids Streamlit conflicting its own diff with the updated base DataFrame.
+    if "mc_pos_editor" in st.session_state:
+        for _row, _edits in st.session_state["mc_pos_editor"].get("edited_rows", {}).items():
+            if "Position (lots)" in _edits:
+                st.session_state["saved_positions"][comm_order[int(_row)]] = int(_edits["Position (lots)"])
+        del st.session_state["mc_pos_editor"]
+
     _pos_rows  = []
     for _c in comm_order:
         _last  = data[_c].dropna(subset=["settlement"]).iloc[-1]
@@ -412,9 +420,6 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
         use_container_width=True,
         key="mc_pos_editor",
     )
-
-    for _c, _pos in zip(comm_order, _edited["Position (lots)"].values):
-        st.session_state["saved_positions"][_c] = int(_pos)
 
     positions  = _edited["Position (lots)"].values.astype(float)
     prices_v   = _edited["Price"].values.astype(float)
