@@ -378,6 +378,10 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
     st.markdown(lbl("Book — Enter Positions"), unsafe_allow_html=True)
 
     comm_order = list(LOT_SIZES.keys())
+
+    if "saved_positions" not in st.session_state:
+        st.session_state["saved_positions"] = {c: 0 for c in comm_order}
+
     _pos_rows  = []
     for _c in comm_order:
         _last  = data[_c].dropna(subset=["settlement"]).iloc[-1]
@@ -389,7 +393,7 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
             "Contract":        _contr,
             "Price":           _price,
             "$ / Lot":         round(_price * LOT_SIZES[_c], 0),
-            "Position (lots)": 0,
+            "Position (lots)": st.session_state["saved_positions"].get(_c, 0),
         })
 
     _pos_default = pd.DataFrame(_pos_rows)
@@ -408,6 +412,9 @@ to extreme moves. Commodity markets experience sharp dislocations more often tha
         use_container_width=True,
         key="mc_pos_editor",
     )
+
+    for _c, _pos in zip(comm_order, _edited["Position (lots)"].values):
+        st.session_state["saved_positions"][_c] = int(_pos)
 
     positions  = _edited["Position (lots)"].values.astype(float)
     prices_v   = _edited["Price"].values.astype(float)
